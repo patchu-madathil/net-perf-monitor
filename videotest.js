@@ -6,9 +6,6 @@ const LOCAL_VIDEO_DURATION_MS = 45000;
 const YOUTUBE_VIDEO_DURATION_MS = 30000;
 const ABSOLUTE_GUARANTEE_ID = 'aqz-KE-bpDs'; 
 
-// --- DOM Elements (Accessed via global setup in orchestrator) ---
-let localVideo, player; 
-
 // --- Helper Functions ---
 
 function calculateRebufferRatio(totalBufferingMs, totalDurationMs) {
@@ -16,9 +13,6 @@ function calculateRebufferRatio(totalBufferingMs, totalDurationMs) {
     return `${(ratio * 100).toFixed(4)}%`;
 }
 
-/**
- * Simplified ID retrieval. Always returns the guaranteed ID.
- */
 videoTest.getGuaranteedVideoId = async function() {
     return ABSOLUTE_GUARANTEE_ID; 
 };
@@ -28,9 +22,10 @@ videoTest.getGuaranteedVideoId = async function() {
 
 /**
  * Runs Local Video Playback and Measurement.
+ * @param {HTMLElement} videoElement - The video element passed from the orchestrator.
  * @returns {Promise<object>} Returns the collected metrics object.
  */
-videoTest.runLocalVideoTest = function() {
+videoTest.runLocalVideoTest = function(videoElement) {
     let localStartTime = 0;
     let localBufferingCount = 0;
     let localBufferingStartTime = 0;
@@ -65,28 +60,28 @@ videoTest.runLocalVideoTest = function() {
             }
         };
         const handleError = (e) => {
-            localVideo.pause();
+            videoElement.pause();
             metrics.errorMessage = `Error loading file: Check "bigbunny1.mp4" path/format.`;
             metrics.error = true;
             resolve({ metrics: metrics });
         };
 
-        localVideo.addEventListener('loadstart', handleLoadStart);
-        localVideo.addEventListener('playing', handlePlaying);
-        localVideo.addEventListener('waiting', handleWaiting);
-        localVideo.addEventListener('error', handleError);
+        videoElement.addEventListener('loadstart', handleLoadStart);
+        videoElement.addEventListener('playing', handlePlaying);
+        videoElement.addEventListener('waiting', handleWaiting);
+        videoElement.addEventListener('error', handleError);
 
         return { handleLoadStart, handlePlaying, handleWaiting, handleError };
     }
 
-    localVideo.src = localVideo.getElementsByTagName('source')[0].src;
-    localVideo.load();
+    videoElement.src = videoElement.getElementsByTagName('source')[0].src;
+    videoElement.load();
 
     return new Promise(async (resolve) => {
         const eventListeners = setupListeners(resolve);
 
         try {
-            await localVideo.play();
+            await videoElement.play();
         } catch (e) {
             metrics.errorMessage = `Playback failed (Autoplay policy or permission denied).`;
             metrics.error = true;
@@ -95,14 +90,14 @@ videoTest.runLocalVideoTest = function() {
 
         setTimeout(() => {
             if (!metrics.error) {
-                localVideo.pause();
-                localVideo.currentTime = 0; 
+                videoElement.pause();
+                videoElement.currentTime = 0; 
 
                 // Cleanup Listeners
-                localVideo.removeEventListener('loadstart', eventListeners.handleLoadStart);
-                localVideo.removeEventListener('playing', eventListeners.handlePlaying);
-                localVideo.removeEventListener('waiting', eventListeners.handleWaiting);
-                localVideo.removeEventListener('error', eventListeners.handleError);
+                videoElement.removeEventListener('loadstart', eventListeners.handleLoadStart);
+                videoElement.removeEventListener('playing', eventListeners.handlePlaying);
+                videoElement.removeEventListener('waiting', eventListeners.handleWaiting);
+                videoElement.removeEventListener('error', eventListeners.handleError);
 
                 metrics.totalStalls = localBufferingCount;
                 metrics.totalBufferingMs = localTotalBufferingMs;
@@ -118,6 +113,14 @@ videoTest.runLocalVideoTest = function() {
  * @returns {Promise<object>} Returns the collected metrics object.
  */
 videoTest.runYoutubeVideoTest = function(videoId) {
+    // Access the YouTube player instance via the global window object (set in onYouTubeIframeAPIReady)
+    let player = window.youtubePlayerInstance; // Assuming we rename the global variable for clarity.
+    
+    // Fallback if the player instance hasn't been set yet
+    if (!player) {
+         return Promise.resolve({ metrics: { name: "YouTube Video", error: true, errorMessage: "YouTube Player API not ready." } });
+    }
+
     return new Promise((resolve) => {
         let youtubeStartTime = 0;
         let youtubeBufferingCount = 0;
@@ -148,7 +151,6 @@ videoTest.runYoutubeVideoTest = function(videoId) {
                     player.removeEventListener('onStateChange', handleStateChange);
                     
                     if (attempts < 3) { 
-                        console.error(`ID ${currentVideoID} failed (Error -2). Retrying in 1 second...`);
                         setTimeout(startAttempt, 1000);
                         return;
                     } else {
@@ -194,7 +196,8 @@ videoTest.runYoutubeVideoTest = function(videoId) {
 
         // Start the first attempt after player is ready
         const interval = setInterval(() => {
-            if (player && player.getPlayerState() !== -1) { 
+            // Check player ready state
+            if (player.getPlayerState() !== -1) { 
                 clearInterval(interval);
                 startAttempt();
             }
@@ -202,8 +205,7 @@ videoTest.runYoutubeVideoTest = function(videoId) {
     });
 };
 
-// --- YouTube API Setup (Moved to videoTest namespace but still needs global callback) ---
-// Note: This logic must remain here as it sets up the environment needed by the video tests.
+// --- YouTube API Setup ---
 
 videoTest.injectYoutubeAPI = function() {
     const tag = document.createElement('script');
@@ -212,11 +214,11 @@ videoTest.injectYoutubeAPI = function() {
     firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 };
 
-// Global callback function (MUST be global, but initializes the local player variable)
+// Global callback function (Sets the player instance on the window object)
 window.onYouTubeIframeAPIReady = function() {
     const githubPagesOrigin = 'https://patchu-madathil.github.io'; 
 
-    player = new YT.Player('youtubePlayer', {
+    window.youtubePlayerInstance = new YT.Player('youtubePlayer', { // Set global instance here
         height: '100%',
         width: '100%',
         videoId: '', 

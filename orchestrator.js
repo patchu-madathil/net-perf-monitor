@@ -1,103 +1,186 @@
 // Global application namespace (App is the Orchestrator)
 const app = {};
 
-// --- DOM Elements ---
-let emailInput, testButton, localVideo, resultsContent, errorDisplay, webrtcResultsContent;
-let webrtcSummaryHeader, videoSummaryHeader; 
+// --- Global Metrics Storage (Namespaced) ---
+app.localMetrics = {};
+app.youtubeMetrics = {};
+app.webrtcMetrics = {};
 
-// --- Global Metrics Storage ---
-let localMetrics;
-let youtubeMetrics;
-let webrtcMetrics;
+// --- Initialization (DOM elements are attached to 'app' namespace) ---
 
-// --- Helper Functions (Assuming unchanged: validateEmail, handleEmailInput, calculateRebufferRatio) ---
-// ... (omitting helper functions for brevity - assume they are present) ...
+function validateEmail(email) {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(String(email).toLowerCase());
+}
 
-// --- Display Functions (Unchanged) ---
-// ... (omitting displayWebrtcSummary and displayVideoSummary for brevity - assume they are present) ...
-
-
-// --- Main Orchestration Function ---
-
-/**
- * Main Orchestration function, starts all tests sequentially and updates UI status.
- */
-app.startAllTests = async function() {
-    // 1. Initial Reset and Setup
-    errorDisplay.style.display = 'none';
-    resultsContent.innerHTML = '<p>Video test results will appear here after the tests are complete.</p>';
-    webrtcResultsContent.innerHTML = '<p>WebRTC VoIP test metrics will appear here.</p>';
-    webrtcSummaryHeader.innerHTML = "🎙️ VoIP WebRTC Test Metrics";
-    videoSummaryHeader.innerHTML = "📊 Video Test Summary";
-    testButton.disabled = true; 
-    
-    try {
-        const videoId = await videoTest.getGuaranteedVideoId();
-        
-        // --- STEP 1: WEB RTC TEST ---
-        webrtcSummaryHeader.innerHTML = "🎙️ VoIP WebRTC Test Metrics (⏳ RUNNING: 30s)";
-        webrtcResultsContent.innerHTML = '<p style="color: #1a73e8; font-weight: 500;">Please grant microphone access if prompted. Running test...</p>';
-        console.log("Starting WebRTC VoIP Test...");
-        
-        const webrtcResult = await webrtcTest.runTest(); 
-        webrtcMetrics = webrtcResult.metrics;
-        displayWebrtcSummary(); // Updates header to SUCCESS or FAILED
-        
-        await new Promise(r => setTimeout(r, 1000)); 
-        
-        // --- STEP 2: VIDEO TESTS (Local & YouTube) ---
-        
-        // Local Test
-        videoSummaryHeader.innerHTML = "📊 Video Test Summary (⏳ RUNNING: Local Video)";
-        resultsContent.innerHTML = '<p style="color: #1a73e8; font-weight: 500;">Running Local Video Test (45s)...</p>';
-        console.log("Starting Local Video Test...");
-        const localResult = await videoTest.runLocalVideoTest(); 
-        localMetrics = localResult.metrics;
-        
-        await new Promise(r => setTimeout(r, 1000)); 
-        
-        // YouTube Test
-        videoSummaryHeader.innerHTML = "📊 Video Test Summary (⏳ RUNNING: YouTube Video)";
-        resultsContent.innerHTML = '<p style="color: #1a73e8; font-weight: 500;">Running YouTube Video Test (30s)...</p>';
-        console.log("Starting YouTube Video Test...");
-        const youtubeResult = await videoTest.runYoutubeVideoTest(videoId); 
-        youtubeMetrics = youtubeResult.metrics;
-
-        // 4. Final Display
-        displayVideoSummary(); // Updates header to FINAL SUCCESS/PARTIAL/FAILED
-        
-    } catch (e) {
-        displayError(`An unexpected error occurred during test orchestration: ${e.message}`);
-    } finally {
-        testButton.disabled = false; 
-    }
-};
-
-// --- Initialization ---
+function handleEmailInput() {
+    // Access elements via app. namespace
+    app.testButton.disabled = !validateEmail(app.emailInput.value);
+    app.errorDisplay.style.display = 'none';
+}
 
 function initialize() {
-    // Get DOM elements
-    emailInput = document.getElementById('emailInput');
-    testButton = document.getElementById('testButton');
-    localVideo = document.getElementById('localVideo');
-    resultsContent = document.getElementById('resultsContent');
-    errorDisplay = document.getElementById('errorDisplay');
-    webrtcResultsContent = document.getElementById('webrtcResultsContent');
+    // ⚠️ FIX: Get DOM elements and attach them to the 'app' namespace ⚠️
+    app.emailInput = document.getElementById('emailInput');
+    app.testButton = document.getElementById('testButton');
+    app.localVideo = document.getElementById('localVideo'); // This caused the conflict!
+    app.resultsContent = document.getElementById('resultsContent');
+    app.errorDisplay = document.getElementById('errorDisplay');
+    app.webrtcResultsContent = document.getElementById('webrtcResultsContent');
     
     // Retrieve headers for status updates
-    webrtcSummaryHeader = document.querySelector('#webrtcSummary h2');
-    videoSummaryHeader = document.querySelector('#summary h2');
+    app.webrtcSummaryHeader = document.querySelector('#webrtcSummary h2');
+    app.videoSummaryHeader = document.querySelector('#summary h2');
 
     // Bind handlers
-    emailInput.addEventListener('input', handleEmailInput);
+    app.emailInput.addEventListener('input', handleEmailInput);
     
     // Initialize YouTube API and WebRTC environment
-    // Note: videoTest.injectYoutubeAPI is assumed to be present in videotest.js
-    // If you are using the full refactored code, ensure videoTest.injectYoutubeAPI is callable or integrated.
     if (typeof videoTest !== 'undefined' && typeof videoTest.injectYoutubeAPI === 'function') {
         videoTest.injectYoutubeAPI(); 
     }
 }
 
 document.addEventListener('DOMContentLoaded', initialize);
-// ... (window.onYouTubeIframeAPIReady remains in videotest.js)
+
+// --- Display Functions (Updated to use app. namespace for elements/metrics) ---
+
+function calculateRebufferRatio(totalBufferingMs, totalDurationMs) {
+    const ratio = totalBufferingMs / totalDurationMs;
+    return `${(ratio * 100).toFixed(4)}%`;
+}
+
+function displayWebrtcSummary() {
+    const metrics = app.webrtcMetrics;
+    
+    if (metrics.error) {
+        app.webrtcSummaryHeader.innerHTML = "🎙️ VoIP WebRTC Test Metrics (❌ FAILED)";
+        app.webrtcResultsContent.innerHTML = `
+            <ul class="metric-list">
+                <li style="background-color: #fdd; border-left: 4px solid red; font-weight: bold;">
+                    ❌ WEB RTC TEST FAILED: ${metrics.errorMessage || 'Unknown WebRTC failure.'}
+                </li>
+            </ul>
+        `;
+        return;
+    }
+
+    app.webrtcSummaryHeader.innerHTML = "🎙️ VoIP WebRTC Test Metrics (✅ SUCCESS)";
+    app.webrtcResultsContent.innerHTML = `
+        <ul class="metric-list">
+            <li style="font-weight: bold; border-left: 4px solid #1a73e8;">**Overall MOS Score (E-Model):** ${metrics.mosScore.toFixed(2)}</li>
+            <li>**Average One-Way Latency (ms):** ${metrics.avgLatency.toFixed(2)}</li>
+            <li>**Average Jitter (ms):** ${metrics.avgJitter.toFixed(2)}</li>
+            <li>**Total Packet Loss (%):** ${metrics.packetLoss.toFixed(2)}%</li>
+            <li>**Test Duration:** ${metrics.durationMs / 1000}s</li>
+        </ul>
+    `;
+}
+
+function displayVideoSummary() {
+    const allMetrics = [app.localMetrics, app.youtubeMetrics];
+    let testSuccessCount = 0;
+    
+    let html = '';
+    
+    allMetrics.forEach(metrics => {
+        
+        html += `<h3>${metrics.name} Metrics</h3>`;
+        
+        if (metrics.error) {
+            html += `
+                <ul class="metric-list">
+                    <li style="background-color: #fdd; border-left: 4px solid red; font-weight: bold;">
+                        ❌ TEST FAILED: ${metrics.errorMessage || 'Unknown Error'}
+                    </li>
+                    <li>Duration: ${metrics.duration || 'N/A'}</li>
+                </ul>
+            `;
+        } else {
+            testSuccessCount++;
+            const durationMs = metrics.name === "Local Video" ? 45000 : 30000;
+            const totalBufferingTimeDisplay = `${(metrics.totalBufferingMs / 1000).toFixed(2)}s`;
+            const rebufferRatio = calculateRebufferRatio(metrics.totalBufferingMs, durationMs);
+            
+            html += `
+                <ul class="metric-list">
+                    <li>**Test Duration:** ${metrics.duration}</li>
+                    <li>**Initial Latency:** ${metrics.initialLatency}</li>
+                    <li class="buffering-time" style="font-weight: bold;">
+                        🛑 **Total Buffering Time:** ${totalBufferingTimeDisplay}
+                    </li>
+                    <li class="rebuffer-ratio" style="font-weight: bold;">
+                        ⚠️ **Rebuffer Ratio:** ${rebufferRatio}
+                    </li>
+                    <li>**Number of Stalls (#):** ${metrics.totalStalls}</li>
+                </ul>
+            `;
+        }
+    });
+
+    if (testSuccessCount === allMetrics.length) {
+        app.videoSummaryHeader.innerHTML = "📊 Video Test Summary (✅ SUCCESS)";
+    } else if (testSuccessCount > 0) {
+        app.videoSummaryHeader.innerHTML = `📊 Video Test Summary (⚠️ PARTIAL SUCCESS: ${testSuccessCount}/${allMetrics.length})`;
+    } else {
+        app.videoSummaryHeader.innerHTML = "📊 Video Test Summary (❌ FAILED)";
+    }
+
+    app.resultsContent.innerHTML = html;
+}
+
+
+// --- Main Orchestration Function ---
+
+app.startAllTests = async function() {
+    // Reset UI
+    app.errorDisplay.style.display = 'none';
+    app.resultsContent.innerHTML = '<p>Video test results will appear here after the tests are complete.</p>';
+    app.webrtcResultsContent.innerHTML = '<p>WebRTC VoIP test metrics will appear here.</p>';
+    app.webrtcSummaryHeader.innerHTML = "🎙️ VoIP WebRTC Test Metrics";
+    app.videoSummaryHeader.innerHTML = "📊 Video Test Summary";
+    app.testButton.disabled = true; 
+    
+    try {
+        const videoId = await videoTest.getGuaranteedVideoId(); // Get the video ID
+        
+        // 1. STEP 1: WEB RTC TEST
+        app.webrtcSummaryHeader.innerHTML = "🎙️ VoIP WebRTC Test Metrics (⏳ RUNNING: 30s)";
+        app.webrtcResultsContent.innerHTML = '<p style="color: #1a73e8; font-weight: 500;">Please grant microphone access if prompted. Running test...</p>';
+        console.log("Starting WebRTC VoIP Test...");
+        
+        const webrtcResult = await webrtcTest.runTest(); // Call the function from webrtc_test.js
+        app.webrtcMetrics = webrtcResult.metrics;
+        displayWebrtcSummary(); 
+        
+        await new Promise(r => setTimeout(r, 1000)); 
+        
+        // 2. STEP 2: VIDEO TESTS
+        
+        // Local Test
+        app.videoSummaryHeader.innerHTML = "📊 Video Test Summary (⏳ RUNNING: Local Video)";
+        app.resultsContent.innerHTML = '<p style="color: #1a73e8; font-weight: 500;">Running Local Video Test (45s)...</p>';
+        console.log("Starting Local Video Test...");
+        // Pass localVideo element from app scope to the module
+        const localResult = await videoTest.runLocalVideoTest(app.localVideo); 
+        app.localMetrics = localResult.metrics;
+        
+        await new Promise(r => setTimeout(r, 1000)); 
+        
+        // YouTube Test
+        app.videoSummaryHeader.innerHTML = "📊 Video Test Summary (⏳ RUNNING: YouTube Video)";
+        app.resultsContent.innerHTML = '<p style="color: #1a73e8; font-weight: 500;">Running YouTube Video Test (30s)...</p>';
+        console.log("Starting YouTube Video Test...");
+        // Pass the videoId to the module
+        const youtubeResult = await videoTest.runYoutubeVideoTest(videoId); 
+        app.youtubeMetrics = youtubeResult.metrics;
+
+        // 3. Final Display
+        displayVideoSummary();
+        
+    } catch (e) {
+        displayError(`An unexpected error occurred during test orchestration: ${e.message}`);
+    } finally {
+        app.testButton.disabled = false; 
+    }
+};
