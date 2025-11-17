@@ -28,9 +28,12 @@ function displayError(message) {
     if (testButton) {
         testButton.disabled = false;
     }
+    if (resultsContent) {
+        resultsContent.innerHTML = '<p>Test failed due to a critical error. See above for details.</p>';
+    }
 }
 
-// --- Helper Functions (unchanged) ---
+// --- Helper Functions ---
 function validateEmail(email) {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return re.test(String(email).toLowerCase());
@@ -58,7 +61,6 @@ async function getDynamicVideoId() {
 
 /**
  * 2. Function for Local Video Playback and Measurement 
- * Returns { error: true/false }
  */
 function runLocalVideoTest() {
     let localStartTime = 0;
@@ -143,7 +145,6 @@ function runLocalVideoTest() {
 
 /**
  * 3. Function for YouTube Video Playback and Measurement 
- * Returns { error: true/false }
  */
 function runYoutubeVideoTest() {
     return new Promise((resolve) => {
@@ -290,7 +291,7 @@ function displaySummary() {
 }
 
 /**
- * 1. Main Video Test Function (Updated to run tests independently)
+ * 1. Main Video Test Function (Sequential and Independent)
  */
 app.runVideoTests = async function() {
     errorDisplay.style.display = 'none';
@@ -301,19 +302,17 @@ app.runVideoTests = async function() {
         const videoId = await getDynamicVideoId();
         dynamicVideoId = videoId; 
         
-        // --- Independent Local Test ---
+        // --- Independent Local Test (Sequential Step 1) ---
         console.log("Starting Local Video Test...");
-        // Capture the result (which updates localMetrics internally)
         await runLocalVideoTest(); 
         
-        await new Promise(r => setTimeout(r, 1000)); 
+        await new Promise(r => setTimeout(r, 1000)); // Pause
         
-        // --- Independent YouTube Test ---
+        // --- Independent YouTube Test (Sequential Step 2) ---
         console.log("Starting YouTube Video Test...");
-        // Capture the result (which updates youtubeMetrics internally)
         await runYoutubeVideoTest(); 
 
-        // ⚠️ Core change: Display summary regardless of individual test results ⚠️
+        // ⚠️ Display summary regardless of individual test results ⚠️
         displaySummary();
         
     } catch (e) {
