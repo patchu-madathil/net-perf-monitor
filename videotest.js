@@ -5,18 +5,17 @@ const app = {};
 const LOCAL_VIDEO_DURATION_MS = 45000;
 const YOUTUBE_VIDEO_DURATION_MS = 30000;
 
-// ⚠️ NEW: Endpoint and Hard Fallback List ⚠️
-// Public service used as a CORS proxy for generic data retrieval.
+// NEW: Endpoint and Hard Fallback List 
 const YOUTUBE_SEARCH_URL = 'https://corsproxy.io/?https://noembed.com/api/?url=https://youtube.com/watch?v=';
 
-// Hardcoded fallback if network discovery fails (used as final resort)
+// Hardcoded fallback if network discovery fails 
 const HARD_FALLBACK_IDS = ['iM5XhM-DqL4', 'aqz-KE-bpDs', 'LXb3EKWsInQ'];
 
 // Global storage for metrics, player instance, and discovered ID
 let localMetrics = {};
 let youtubeMetrics = {};
 let player; 
-let dynamicVideoId = null; // ⚠️ Will store the dynamically fetched/fallback ID
+let dynamicVideoId = null;
 
 // --- DOM Elements (Accessed after the DOM is loaded) ---
 let emailInput, testButton, localVideo, resultsContent, errorDisplay;
@@ -54,24 +53,18 @@ function calculateRebufferRatio(totalBufferingMs, totalDurationMs) {
 }
 
 /**
- * ⚠️ NEW: Fetches a dynamic video ID (or falls back to a stable one).
+ * Fetches a dynamic video ID (or falls back to a stable one).
  */
 async function getDynamicVideoId() {
-    // In a pure client-side environment, we attempt a network call to simulate discovery.
     try {
-        // Attempt to fetch metadata for the primary fallback ID via a proxy.
-        // If successful, we proceed, showing network connectivity is fine.
         const response = await fetch(YOUTUBE_SEARCH_URL + HARD_FALLBACK_IDS[0]);
         if (!response.ok) throw new Error('Network error or proxy failed.');
         
-        // Return the most reliable ID found, which is the first one in the fallback list.
-        // This eliminates dependency on a huge fixed list and verifies connectivity.
         console.log("Network check passed. Using primary stable ID.");
         return HARD_FALLBACK_IDS[0]; 
 
     } catch (e) {
         console.warn(`Dynamic video fetch failed (${e.message}). Falling back to primary ID.`);
-        // If network fails or proxy fails, return the first hardcoded ID as a final backup.
         return HARD_FALLBACK_IDS[0]; 
     }
 }
@@ -97,7 +90,6 @@ function runLocalVideoTest() {
     };
 
     function setupListeners(resolve) {
-        // ... (Listeners remain the same) ...
         const handleLoadStart = () => { localStartTime = performance.now(); };
         const handlePlaying = () => {
             if (localMetrics.initialLatency === "N/A") {
@@ -114,247 +106,3 @@ function runLocalVideoTest() {
                 localBufferingStartTime = performance.now();
             }
         };
-        const handleError = (e) => {
-            localVideo.pause();
-            displayError(`Local Video Error (${e.type}): Could not load "bigbunny1.mp4". Check file path and format.`);
-            resolve({ error: true });
-        };
-
-        localVideo.addEventListener('loadstart', handleLoadStart);
-        localVideo.addEventListener('playing', handlePlaying);
-        localVideo.addEventListener('waiting', handleWaiting);
-        localVideo.addEventListener('error', handleError);
-
-        return { handleLoadStart, handlePlaying, handleWaiting, handleError };
-    }
-
-    localVideo.src = localVideo.getElementsByTagName('source')[0].src;
-    localVideo.load();
-
-    return new Promise(async (resolve) => {
-        const eventListeners = setupListeners(resolve);
-
-        try {
-            await localVideo.play();
-        } catch (e) {
-            displayError(`Local Video Playback Failed: ${e.message}`);
-            return resolve({ error: true });
-        }
-
-        setTimeout(() => {
-            if (!eventListeners.errorCalled) {
-                localVideo.pause();
-                localVideo.currentTime = 0; 
-
-                localVideo.removeEventListener('loadstart', eventListeners.handleLoadStart);
-                localVideo.removeEventListener('playing', eventListeners.handlePlaying);
-                localVideo.removeEventListener('waiting', eventListeners.handleWaiting);
-                localVideo.removeEventListener('error', eventListeners.handleError);
-
-                localMetrics.totalStalls = localBufferingCount;
-                localMetrics.totalBufferingMs = localTotalBufferingMs;
-            }
-            resolve({ error: false });
-        }, LOCAL_VIDEO_DURATION_MS);
-    });
-}
-
-/**
- * 3. Function for YouTube Video Playback and Measurement (Simplified/Dynamic)
- */
-function runYoutubeVideoTest() {
-    let youtubeStartTime = 0;
-    let youtubeBufferingCount = 0;
-    let youtubeBufferingStartTime = 0;
-    let youtubeTotalBufferingMs = 0; 
-
-    // ⚠️ Use the globally discovered ID ⚠️
-    const currentVideoID = dynamicVideoId; 
-    
-    youtubeMetrics = {
-        name: "YouTube Video",
-        initialLatency: "N/A",
-        totalStalls: 0,
-        duration: `${YOUTUBE_VIDEO_DURATION_MS / 1000}s`,
-        totalBufferingMs: 0
-    };
-    youtubeStartTime = performance.now();
-
-    return new Promise((resolve) => {
-        const interval = setInterval(() => {
-            if (player && player.getPlayerState() !== -1) { 
-                clearInterval(interval);
-                
-                // Load the dynamically discovered ID
-                player.loadVideoById(currentVideoID); 
-                player.mute(); 
-                player.playVideo(); 
-
-                const handleStateChange = (event) => {
-                    // Error handling for unavailability
-                    if (event.data === -2) {
-                        player.stopVideo();
-                        player.removeEventListener('onStateChange', handleStateChange);
-                        displayError(`YouTube Test Failed: Video ID ${currentVideoID} is unavailable (Error Code -2).`);
-                        return resolve({ error: true }); 
-                    }
-                    
-                    if (event.data === YT.PlayerState.PLAYING) {
-                        if (youtubeMetrics.initialLatency === "N/A") {
-                            youtubeMetrics.initialLatency = `${(performance.now() - youtubeStartTime).toFixed(2)} ms`;
-                        }
-                        if (youtubeBufferingStartTime > 0) {
-                            youtubeTotalBufferingMs += performance.now() - youtubeBufferingStartTime;
-                            youtubeBufferingStartTime = 0;
-                        }
-                    } else if (event.data === YT.PlayerState.BUFFERING) {
-                        youtubeBufferingCount++;
-                        if (youtubeBufferingStartTime === 0) {
-                            youtubeBufferingStartTime = performance.now();
-                        }
-                    }
-                };
-
-                player.addEventListener('onStateChange', handleStateChange);
-
-                setTimeout(() => {
-                    player.stopVideo();
-                    player.removeEventListener('onStateChange', handleStateChange);
-
-                    youtubeMetrics.totalStalls = youtubeBufferingCount;
-                    youtubeMetrics.totalBufferingMs = youtubeTotalBufferingMs;
-                    
-                    resolve({ error: false }); 
-                }, YOUTUBE_VIDEO_DURATION_MS);
-            }
-        }, 500);
-    });
-}
-
-// --- Display Function (unchanged) ---
-
-function displaySummary() {
-    if (localMetrics.error || youtubeMetrics.error) return; 
-
-    const localRebufferRatio = calculateRebufferRatio(localMetrics.totalBufferingMs, LOCAL_VIDEO_DURATION_MS);
-    const youtubeRebufferRatio = calculateRebufferRatio(youtubeMetrics.totalBufferingMs, YOUTUBE_VIDEO_DURATION_MS);
-
-    const allMetrics = [
-        { 
-            ...localMetrics, 
-            rebufferRatio: localRebufferRatio,
-            totalBufferingTimeDisplay: `${(localMetrics.totalBufferingMs / 1000).toFixed(2)}s`
-        }, 
-        { 
-            ...youtubeMetrics, 
-            rebufferRatio: youtubeRebufferRatio,
-            totalBufferingTimeDisplay: `${(youtubeMetrics.totalBufferingMs / 1000).toFixed(2)}s`
-        }
-    ];
-    
-    let html = `<h2>Test Complete! (Video ID: ${dynamicVideoId})</h2>`;
-    // ... (metrics rendering remains the same) ...
-    allMetrics.forEach(metrics => {
-        html += `
-            <h3>${metrics.name} Metrics</h3>
-            <ul class="metric-list">
-                <li>**Test Duration:** ${metrics.duration}</li>
-                <li>**Initial Latency:** ${metrics.initialLatency}</li>
-                <li class="buffering-time" style="font-weight: bold;">
-                    🛑 **Total Buffering Time:** ${metrics.totalBufferingTimeDisplay}
-                </li>
-                <li class="rebuffer-ratio" style="font-weight: bold;">
-                    ⚠️ **Rebuffer Ratio:** ${metrics.rebufferRatio}
-                </li>
-                <li>**Number of Stalls (#):** ${metrics.totalStalls}</li>
-            </ul>
-        `;
-    });
-
-    resultsContent.innerHTML = html;
-}
-
-/**
- * 1. Main Video Test Function 
- */
-app.runVideoTests = async function() {
-    errorDisplay.style.display = 'none';
-    resultsContent.innerHTML = '<p style="color: #1a73e8; font-weight: 500;">Running tests... Please wait.</p>';
-    testButton.disabled = true; 
-    
-    try {
-        // ⚠️ STEP 1: Discover the Video ID ⚠️
-        const videoId = await getDynamicVideoId();
-        dynamicVideoId = videoId; // Store the ID for the player functions
-        console.log(`Discovered/Using Video ID: ${dynamicVideoId}`);
-
-        // STEP 2: Run Local Test
-        console.log("Starting Local Video Test...");
-        const localResult = await runLocalVideoTest();
-        if (localResult.error) {
-            return;
-        }
-        
-        await new Promise(r => setTimeout(r, 1000)); 
-        
-        // STEP 3: Run YouTube Test
-        console.log("Starting YouTube Video Test...");
-        const youtubeResult = await runYoutubeVideoTest(); 
-        if (youtubeResult.error) {
-            return;
-        }
-
-        displaySummary();
-    } catch (e) {
-        displayError(`An unexpected error occurred during testing: ${e.message}`);
-    } finally {
-        testButton.disabled = false; 
-    }
-};
-
-// --- Initialization ---
-
-function injectYoutubeAPI() {
-    const tag = document.createElement('script');
-    tag.src = "https://www.youtube.com/iframe_api";
-    const firstScriptTag = document.getElementsByTagName('script')[0];
-    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-}
-
-function initialize() {
-    emailInput = document.getElementById('emailInput');
-    testButton = document.getElementById('testButton');
-    localVideo = document.getElementById('localVideo');
-    resultsContent = document.getElementById('resultsContent');
-    errorDisplay = document.getElementById('errorDisplay');
-    
-    emailInput.addEventListener('input', handleEmailInput);
-    
-    injectYoutubeAPI();
-}
-
-// Global window error handler (last resort)
-window.onerror = function(message, source, lineno, colno, error) {
-    if (message.includes('Script error.')) {
-        displayError("A script failed to load. Check your internet connection or console.");
-    } else {
-        displayError(`Fatal Error: ${message} (Line: ${lineno})`);
-    }
-    return true;
-};
-
-document.addEventListener('DOMContentLoaded', initialize);
-
-// ⚠️ Initialize player with empty string, ID loaded later ⚠️
-window.onYouTubeIframeAPIReady = async function() {
-    player = new YT.Player('youtubePlayer', {
-        height: '100%',
-        width: '100%',
-        videoId: '', // Initialize with empty string/placeholder
-        playerVars: {
-            'playsinline': 1,
-            'autoplay': 0,
-            'controls': 1
-        }
-    });
-};
