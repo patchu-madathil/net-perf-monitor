@@ -5,32 +5,28 @@ const app = {};
 const LOCAL_VIDEO_DURATION_MS = 45000;
 const YOUTUBE_VIDEO_DURATION_MS = 30000;
 
-// ⚠️ GUARANTEE: The single, most reliable video ID. 
-// This should be a globally stable public domain video (e.g., Big Buck Bunny).
+// GUARANTEE: The single, most reliable video ID. 
 const ABSOLUTE_GUARANTEE_ID = 'aqz-KE-bpDs'; 
 
 // Global storage for metrics, player instance, and discovered ID
-let localMetrics = {};
-let youtubeMetrics = {};
+let localMetrics = { name: "Local Video", error: true }; // Initialize with error: true
+let youtubeMetrics = { name: "YouTube Video", error: true }; // Initialize with error: true
 let player; 
-let dynamicVideoId = null; // Will now store the guaranteed ID
+let dynamicVideoId = null;
 
 // --- DOM Elements (Accessed after the DOM is loaded) ---
 let emailInput, testButton, localVideo, resultsContent, errorDisplay;
 
-// --- Error Handling Function (unchanged) ---
+// --- Error Handling Function ---
 function displayError(message) {
     if (errorDisplay) {
-        errorDisplay.innerHTML = `🚨 Error: ${message}`;
+        errorDisplay.innerHTML = `🚨 Critical Application Error: ${message}`;
         errorDisplay.style.display = 'block';
     } else {
         console.error(`Application Error: ${message}`);
     }
     if (testButton) {
         testButton.disabled = false;
-    }
-    if (resultsContent) {
-        resultsContent.innerHTML = '<p>Test failed due to an error. See above for details.</p>';
     }
 }
 
@@ -51,11 +47,9 @@ function calculateRebufferRatio(totalBufferingMs, totalDurationMs) {
 }
 
 /**
- * ⚠️ NEW: Simplified ID retrieval. Always returns the guaranteed ID.
+ * Simplified ID retrieval. Always returns the guaranteed ID.
  */
 async function getDynamicVideoId() {
-    // We trust the stability of this ID to be 100%.
-    console.log(`Using ABSOLUTE GUARANTEE ID: ${ABSOLUTE_GUARANTEE_ID}`);
     return ABSOLUTE_GUARANTEE_ID; 
 }
 
@@ -63,21 +57,23 @@ async function getDynamicVideoId() {
 // --- Video Test Functions ---
 
 /**
- * 2. Function for Local Video Playback and Measurement (unchanged)
+ * 2. Function for Local Video Playback and Measurement 
+ * Returns { error: true/false }
  */
 function runLocalVideoTest() {
-    // ... (local video logic remains unchanged) ...
     let localStartTime = 0;
     let localBufferingCount = 0;
     let localBufferingStartTime = 0;
     let localTotalBufferingMs = 0; 
     
+    // Reset metrics for this specific test
     localMetrics = {
         name: "Local Video",
         initialLatency: "N/A",
         totalStalls: 0,
         duration: `${LOCAL_VIDEO_DURATION_MS / 1000}s`,
-        totalBufferingMs: 0
+        totalBufferingMs: 0,
+        error: false // Assume success initially
     };
 
     function setupListeners(resolve) {
@@ -99,7 +95,8 @@ function runLocalVideoTest() {
         };
         const handleError = (e) => {
             localVideo.pause();
-            displayError(`Local Video Error (${e.type}): Could not load "bigbunny1.mp4". Check file path and format.`);
+            localMetrics.errorMessage = `Error loading file: Check "bigbunny1.mp4" path/format.`;
+            localMetrics.error = true;
             resolve({ error: true });
         };
 
@@ -120,15 +117,17 @@ function runLocalVideoTest() {
         try {
             await localVideo.play();
         } catch (e) {
-            displayError(`Local Video Playback Failed: ${e.message}`);
+            localMetrics.errorMessage = `Playback failed (Autoplay policy or permission denied).`;
+            localMetrics.error = true;
             return resolve({ error: true });
         }
 
         setTimeout(() => {
-            if (!eventListeners.errorCalled) {
+            if (!localMetrics.error) {
                 localVideo.pause();
                 localVideo.currentTime = 0; 
 
+                // Cleanup Listeners
                 localVideo.removeEventListener('loadstart', eventListeners.handleLoadStart);
                 localVideo.removeEventListener('playing', eventListeners.handlePlaying);
                 localVideo.removeEventListener('waiting', eventListeners.handleWaiting);
@@ -137,13 +136,14 @@ function runLocalVideoTest() {
                 localMetrics.totalStalls = localBufferingCount;
                 localMetrics.totalBufferingMs = localTotalBufferingMs;
             }
-            resolve({ error: false });
+            resolve({ error: localMetrics.error });
         }, LOCAL_VIDEO_DURATION_MS);
     });
 }
 
 /**
- * 3. Function for YouTube Video Playback and Measurement (100% Guaranteed Playback)
+ * 3. Function for YouTube Video Playback and Measurement 
+ * Returns { error: true/false }
  */
 function runYoutubeVideoTest() {
     return new Promise((resolve) => {
@@ -152,42 +152,45 @@ function runYoutubeVideoTest() {
         let youtubeBufferingStartTime = 0;
         let youtubeTotalBufferingMs = 0; 
         
-        const currentVideoID = dynamicVideoId; // This is the ABSOLUTE_GUARANTEE_ID
-        let attempts = 0; // Track attempts to prevent infinite loops
+        const currentVideoID = dynamicVideoId; 
+        let attempts = 0; 
+
+        // Reset metrics for this specific test
+        youtubeMetrics = {
+            name: "YouTube Video",
+            initialLatency: "N/A",
+            totalStalls: 0,
+            duration: `${YOUTUBE_VIDEO_DURATION_MS / 1000}s`,
+            totalBufferingMs: 0,
+            error: false
+        };
 
         const startAttempt = () => {
             attempts++;
             console.log(`Youtubeback Attempt #${attempts} using ID: ${currentVideoID}`);
             
-            youtubeMetrics = {
-                name: "YouTube Video",
-                initialLatency: "N/A",
-                totalStalls: 0,
-                duration: `${YOUTUBE_VIDEO_DURATION_MS / 1000}s`,
-                totalBufferingMs: 0
-            };
             youtubeStartTime = performance.now();
 
             const handleStateChange = (event) => {
-                // ⚠️ FINAL RESILIENCE: Error Code -2 (Video Unavailable) ⚠️
+                // Video Unavailable Error Check
                 if (event.data === -2) {
                     player.stopVideo();
                     player.removeEventListener('onStateChange', handleStateChange);
                     
-                    if (attempts < 3) { // Retry up to 3 times
+                    if (attempts < 3) { 
                         console.error(`ID ${currentVideoID} failed (Error -2). Retrying in 1 second...`);
                         setTimeout(startAttempt, 1000);
                         return;
                     } else {
-                        // All guaranteed attempts failed (Severe environment block)
-                        displayError(`YouTube Load Error: Failed to play guaranteed ID (${currentVideoID}) after ${attempts} attempts. Cannot proceed.`);
+                        // Mark test as failed
+                        youtubeMetrics.errorMessage = `Failed to play video ID ${currentVideoID} after ${attempts} attempts (Unavailable/Restricted).`;
+                        youtubeMetrics.error = true;
                         return resolve({ error: true }); 
                     }
                 }
                 
                 // Normal metric collection logic
                 if (event.data === YT.PlayerState.PLAYING) {
-                    // Check if this is the first success for this run
                     if (youtubeMetrics.initialLatency === "N/A") {
                         youtubeMetrics.initialLatency = `${(performance.now() - youtubeStartTime).toFixed(2)} ms`;
                     }
@@ -208,15 +211,15 @@ function runYoutubeVideoTest() {
             player.mute(); 
             player.playVideo(); 
 
-            // Set timeout for the duration of the successful test
             setTimeout(() => {
-                player.stopVideo();
-                player.removeEventListener('onStateChange', handleStateChange);
+                if (!youtubeMetrics.error) {
+                    player.stopVideo();
+                    player.removeEventListener('onStateChange', handleStateChange);
 
-                youtubeMetrics.totalStalls = youtubeBufferingCount;
-                youtubeMetrics.totalBufferingMs = youtubeTotalBufferingMs;
-                
-                resolve({ error: false }); 
+                    youtubeMetrics.totalStalls = youtubeBufferingCount;
+                    youtubeMetrics.totalBufferingMs = youtubeTotalBufferingMs;
+                }
+                resolve({ error: youtubeMetrics.error }); 
             }, YOUTUBE_VIDEO_DURATION_MS);
         };
 
@@ -230,51 +233,64 @@ function runYoutubeVideoTest() {
     });
 }
 
-// --- Display Function (updated with simple ID display) ---
+// --- Display Function (Updated to handle errors) ---
 
 function displaySummary() {
-    if (localMetrics.error || youtubeMetrics.error) return; 
-
-    const localRebufferRatio = calculateRebufferRatio(localMetrics.totalBufferingMs, LOCAL_VIDEO_DURATION_MS);
-    const youtubeRebufferRatio = calculateRebufferRatio(youtubeMetrics.totalBufferingMs, YOUTUBE_VIDEO_DURATION_MS);
-
-    const allMetrics = [
-        { 
-            ...localMetrics, 
-            rebufferRatio: localRebufferRatio,
-            totalBufferingTimeDisplay: `${(localMetrics.totalBufferingMs / 1000).toFixed(2)}s`
-        }, 
-        { 
-            ...youtubeMetrics, 
-            rebufferRatio: youtubeRebufferRatio,
-            totalBufferingTimeDisplay: `${(youtubeMetrics.totalBufferingMs / 1000).toFixed(2)}s`
-        }
-    ];
+    // We display the summary regardless of test failures now
+    const allMetrics = [localMetrics, youtubeMetrics];
+    let testSuccessCount = 0;
     
-    // Display the guaranteed ID that was used
-    let html = `<h2>Test Complete! (Video ID Used: ${dynamicVideoId})</h2>`; 
+    let html = '';
+    
     allMetrics.forEach(metrics => {
-        html += `
-            <h3>${metrics.name} Metrics</h3>
-            <ul class="metric-list">
-                <li>**Test Duration:** ${metrics.duration}</li>
-                <li>**Initial Latency:** ${metrics.initialLatency}</li>
-                <li class="buffering-time" style="font-weight: bold;">
-                    🛑 **Total Buffering Time:** ${metrics.totalBufferingTimeDisplay}
-                </li>
-                <li class="rebuffer-ratio" style="font-weight: bold;">
-                    ⚠️ **Rebuffer Ratio:** ${metrics.rebufferRatio}
-                </li>
-                <li>**Number of Stalls (#):** ${metrics.totalStalls}</li>
-            </ul>
-        `;
+        
+        html += `<h3>${metrics.name} Metrics</h3>`;
+        
+        if (metrics.error) {
+            // ⚠️ DISPLAY FAILURE MESSAGE ⚠️
+            html += `
+                <ul class="metric-list">
+                    <li style="background-color: #fdd; border-left: 4px solid red; font-weight: bold;">
+                        ❌ TEST FAILED: ${metrics.errorMessage || 'Unknown Error'}
+                    </li>
+                    <li>Duration: ${metrics.duration || 'N/A'}</li>
+                </ul>
+            `;
+        } else {
+            // ⚠️ DISPLAY SUCCESSFUL METRICS ⚠️
+            testSuccessCount++;
+            const totalBufferingTimeDisplay = `${(metrics.totalBufferingMs / 1000).toFixed(2)}s`;
+            const rebufferRatio = calculateRebufferRatio(metrics.totalBufferingMs, metrics === localMetrics ? LOCAL_VIDEO_DURATION_MS : YOUTUBE_VIDEO_DURATION_MS);
+            
+            html += `
+                <ul class="metric-list">
+                    <li>**Test Duration:** ${metrics.duration}</li>
+                    <li>**Initial Latency:** ${metrics.initialLatency}</li>
+                    <li class="buffering-time" style="font-weight: bold;">
+                        🛑 **Total Buffering Time:** ${totalBufferingTimeDisplay}
+                    </li>
+                    <li class="rebuffer-ratio" style="font-weight: bold;">
+                        ⚠️ **Rebuffer Ratio:** ${rebufferRatio}
+                    </li>
+                    <li>**Number of Stalls (#):** ${metrics.totalStalls}</li>
+                </ul>
+            `;
+        }
     });
+
+    // Final heading adjustment based on results
+    if (testSuccessCount === 0) {
+        html = `<h2>Test Failed Completely!</h2>${html}`;
+    } else {
+        html = `<h2>Test Complete! (${testSuccessCount} of ${allMetrics.length} successful)</h2>` + html;
+    }
+
 
     resultsContent.innerHTML = html;
 }
 
 /**
- * 1. Main Video Test Function 
+ * 1. Main Video Test Function (Updated to run tests independently)
  */
 app.runVideoTests = async function() {
     errorDisplay.style.display = 'none';
@@ -282,28 +298,26 @@ app.runVideoTests = async function() {
     testButton.disabled = true; 
     
     try {
-        // Step 1: Get the guaranteed ID
         const videoId = await getDynamicVideoId();
         dynamicVideoId = videoId; 
         
+        // --- Independent Local Test ---
         console.log("Starting Local Video Test...");
-        const localResult = await runLocalVideoTest();
-        if (localResult.error) {
-            return;
-        }
+        // Capture the result (which updates localMetrics internally)
+        await runLocalVideoTest(); 
         
         await new Promise(r => setTimeout(r, 1000)); 
         
-        // Step 2: Run YouTube Test (This function now handles its own retries/guarantee)
+        // --- Independent YouTube Test ---
         console.log("Starting YouTube Video Test...");
-        const youtubeResult = await runYoutubeVideoTest(); 
-        if (youtubeResult.error) {
-            return;
-        }
+        // Capture the result (which updates youtubeMetrics internally)
+        await runYoutubeVideoTest(); 
 
+        // ⚠️ Core change: Display summary regardless of individual test results ⚠️
         displaySummary();
+        
     } catch (e) {
-        displayError(`An unexpected error occurred during testing: ${e.message}`);
+        displayError(`An unexpected error occurred during test orchestration: ${e.message}`);
     } finally {
         testButton.disabled = false; 
     }
@@ -342,7 +356,7 @@ window.onerror = function(message, source, lineno, colno, error) {
 
 document.addEventListener('DOMContentLoaded', initialize);
 
-// FINAL FIX (Origin and API enable remain)
+// FINAL FIX (unchanged)
 window.onYouTubeIframeAPIReady = async function() {
     const githubPagesOrigin = 'https://patchu-madathil.github.io'; 
 
