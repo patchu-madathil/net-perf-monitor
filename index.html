@@ -9,14 +9,14 @@
 <body>
 
 <div class="card">
-    <h1>🎬 Video Streaming Quality Tester</h1>
+    <h1>🎬 Streaming Quality Tester</h1>
 
     <div id="errorDisplay" class="error-message"></div>
 
     <div class="input-group">
         <label for="emailInput">Email:</label>
         <input type="email" id="emailInput" placeholder="your.email@example.com">
-        <button id="testButton" disabled onclick="app.runVideoTests()">Video Test</button>
+        <button id="testButton" disabled onclick="app.startAllTests()">Start All Tests</button>
     </div>
 
     <hr class="separator">
@@ -35,14 +35,23 @@
         </div>
     </div>
     
+    <div id="webrtcSummary" class="card summary-card" style="margin-top: 24px;">
+        <h2>🎙️ VoIP WebRTC Test Metrics</h2>
+        <div id="webrtcResultsContent">
+            <p>WebRTC VoIP test metrics will appear here.</p>
+        </div>
+    </div>
+
     <div id="summary" class="card summary-card">
-        <h2>📊 Test Summary</h2>
+        <h2>📊 Video Test Summary</h2>
         <div id="resultsContent">
-            <p>Results will appear here after the tests are complete.</p>
+            <p>Video test results will appear here after the tests are complete.</p>
         </div>
     </div>
 </div>
 
+<script src="webrtc_test.js"></script>
 <script src="videotest.js"></script>
+<script src="orchestrator.js"></script>
 </body>
 </html>
