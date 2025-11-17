@@ -1,0 +1,66 @@
+# 🎬 Video Streaming Quality Tester
+
+A simple, client-side application built using **HTML** and vanilla **JavaScript** designed to measure and compare streaming performance metrics for both a local video file and an embedded YouTube video player.
+
+The user interface (UI) adheres to **Google UX/Material Design** principles for a clean, intuitive, and highly readable experience.
+
+## ✨ Features
+
+* **Email Gate:** Enables the primary "Video Test" action only after a valid email format is entered, ensuring a conscious start to the tests.
+* **Dual Testing Protocol:** Runs a local video test (45 seconds) and a YouTube video test (30 seconds) sequentially.
+* **Accurate Metric Capture:** Leverages JavaScript's `performance.now()` and built-in media events (including the YouTube IFrame API's state changes) to precisely measure key Quality of Experience (QoE) metrics.
+* **Material Design UI:** Employs a clean, card-based layout, clear typography, and elevation (shadows) for visual hierarchy.
+
+---
+
+## 📊 Captured Streaming Metrics
+
+The application captures the following industry-relevant metrics for both the local and YouTube tests:
+
+| Metric | Definition | Measurement Logic |
+| :--- | :--- | :--- |
+| **Initial Latency** | Time (in milliseconds) from playback request to the rendering of the first video frame. | Calculated by measuring the difference between `performance.now()` when the test starts and when the player first reports the **Playing** state. |
+| **Number of Stalls (#)** | The total count of times playback was interrupted due to buffer exhaustion. | Incremented when the video enters the **Buffering** state (`waiting` event or `YT.PlayerState.BUFFERING`). |
+| **Total Buffering Time** | The total accumulated time (in seconds) the player spent in the stalled/buffering state during the entire test. | Measured accurately by starting a timer (`performance.now()`) on entering the Buffering state and accumulating the elapsed duration when the Playing state is resumed. |
+| **Rebuffer Ratio** | The key QoE metric that shows streaming inefficiency. | Calculated as: $\frac{\text{Total Buffering Time}}{\text{Test Duration}} \times 100\%$. |
+
+---
+
+## 🚀 Setup and Implementation
+
+### 1. File Structure
+
+To run the application, you need to set up the following two items in the **same local directory**:
+
+| Item | Type | Notes |
+| :--- | :--- | :--- |
+| **`video_metrics_app.html`** | Application File | Contains all HTML, CSS, and JavaScript. |
+| **`bigbunny1.mp4`** | Local Video File | The test video, referenced directly in the HTML `<video>` tag. |
+
+### 2. Running the Tests
+
+1.  **Place Files:** Ensure both `video_metrics_app.html` and `bigbunny1.mp4` are in the same folder.
+2.  **Open in Browser:** Double-click `video_metrics_app.html` to launch the application in your web browser.
+3.  **Validate & Start:** Enter a valid email (e.g., `user@test.com`) and click the **Video Test** button.
+4.  **Review Summary:** After the 45-second local test and 30-second YouTube test conclude, the summary section will update with the precise metrics.
+
+---
+
+## 💻 Core JavaScript Logic
+
+The logic is self-contained within the `<script>` tags of the HTML file.
+
+### A. Accurate Buffering Time Measurement
+
+The most critical part of the application is the precise measurement of **Total Buffering Time**.
+
+1.  **Timer Start:** When the player fires a **stalling** event (`waiting` for local video or `YT.PlayerState.BUFFERING` for YouTube), a variable (`*BufferingStartTime`) records the current `performance.now()` timestamp.
+2.  **Time Accumulation:** When the player fires a **playback resumption** event (`playing` or `YT.PlayerState.PLAYING`), the duration of the stall is calculated and added to the `*TotalBufferingMs` accumulator.
+3.  **Final Calculation:** The accumulated `*TotalBufferingMs` value is then used in the `displaySummary` function to calculate the final **Rebuffer Ratio**.
+
+### B. YouTube Player Integration
+
+The application uses the dynamically loaded **YouTube IFrame Player API**. The `onStateChange` event listener is vital for capturing metrics:
+
+* **Initial Latency:** Captured when the state changes from unstarted/loading to `YT.PlayerState.PLAYING` (State `1`).
+* **Stalls:** Captured when the state changes to `YT.PlayerState.BUFFERING` (State `3`).
