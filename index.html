@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Streaming Metrics Tester</title>
+    <style>
+        /* --- General Layout and Typography (Material Inspired) --- */
+        body { 
+            font-family: 'Roboto', Arial, sans-serif; 
+            padding: 24px; 
+            background-color: #f5f5f5; 
+            color: #212121;
+        }
+        h1 { 
+            color: #1a73e8; /* Google Blue */
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        h3 {
+            color: #3c4043;
+            font-weight: 400;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 8px;
+            margin-top: 0;
+        }
+
+        /* --- Material Card Component (Elevation) --- */
+        .card { 
+            max-width: 900px; 
+            margin: 24px auto; 
+            background: #ffffff; 
+            padding: 24px; 
+            border-radius: 8px; 
+            /* Subtle Elevation 2 shadow */
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16), 0 3px 6px rgba(0, 0, 0, 0.23); 
+        }
+
+        /* --- Input and Button (Affordance) --- */
+        .input-group { 
+            margin-bottom: 24px; 
+            display: flex; 
+            gap: 16px; 
+            align-items: center; 
+        }
+        .input-group label {
+            font-weight: 500;
+            min-width: 50px;
+        }
+        .input-group input { 
+            padding: 10px 12px; 
+            border: 1px solid #ccc; 
+            border-radius: 4px; 
+            flex-grow: 1; 
+            transition: border-color 0.3s;
+        }
+        .input-group input:focus {
+            border-color: #1a73e8;
+            outline: none;
+            box-shadow: 0 0 0 1px #1a73e8;
+        }
+        
+        #testButton { 
+            padding: 10px 24px; 
+            background-color: #e0e0e0; 
+            color: #757575; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: not-allowed; 
+            transition: all 0.2s ease-in-out;
+            font-weight: 500;
+        }
+        #testButton:enabled { 
+            background-color: #1a73e8; /* Primary Blue for Action */
+            color: white; 
+            cursor: pointer; 
+        }
+        #testButton:enabled:hover {
+            background-color: #155bb9;
+            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2); 
+        }
+
+        /* --- Video Containers --- */
+        .video-section { 
+            margin-top: 24px; 
+            display: flex; 
+            gap: 20px; 
+        }
+        .video-box { 
+            flex: 1; 
+            padding: 16px; 
+            border-radius: 4px; 
+            background-color: #fcfcfc;
+            border: 1px solid #e0e0e0;
+        }
+        #localVideo, #youtubePlayer { 
+            width: 100%; 
+            aspect-ratio: 16 / 9;
+            display: block;
+        }
+
+        /* --- Summary Results (Feedback) --- */
+        #summary { 
+            margin-top: 24px; 
+            padding: 24px; 
+            background-color: #e8f0fe; /* Light blue background for emphasis */
+            border-radius: 8px; 
+            border: 1px solid #c4d8f7; 
+        }
+        #summary h2 { 
+            color: #1a73e8; 
+            margin-top: 0; 
+            font-weight: 500;
+        }
+        .metric-list { 
+            list-style: none; 
+            padding: 0; 
+        }
+        .metric-list li { 
+            margin-bottom: 8px; 
+            padding: 10px; 
+            background-color: #ffffff; 
+            border-radius: 2px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #34a853; /* Default accent (Google Green) */
+        }
+        /* Specific result accents */
+        .metric-list li.buffering-time {
+            background-color: #fce8e6; 
+            border-left: 4px solid #ea4335; /* Google Red for Stall/Error */
+        }
+        .metric-list li.rebuffer-ratio {
+            background-color: #fff7e6;
+            border-left: 4px solid #fbbc04; /* Google Yellow for Warning/Ratio */
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>🎬 Video Streaming Quality Tester</h1>
+
+    <div class="input-group">
+        <label for="emailInput">Email:</label>
+        <input type="email" id="emailInput" placeholder="your.email@example.com">
+        <button id="testButton" disabled onclick="runVideoTests()">Video Test</button>
+    </div>
+
+    <hr style="border-top: 1px solid #e0e0e0;">
+
+    <div class="video-section">
+        <div class="video-box">
+            <h3>Local Video Test (45s)</h3>
+            <video id="localVideo" controls muted preload="auto">
+                <source src="bigbunny1.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+        <div class="video-box">
+            <h3>YouTube Video Test (30s)</h3>
+            <div id="youtubePlayer"></div>
+        </div>
+    </div>
+    
+    <div id="summary" class="card" style="box-shadow: none; margin-top: 24px;">
+        <h2>📊 Test Summary</h2>
+        <div id="resultsContent">
+            <p>Results will appear here after the tests are complete.</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Configuration ---
+    const LOCAL_VIDEO_DURATION_MS = 45000; // 45 seconds
+    const YOUTUBE_VIDEO_DURATION_MS = 30000; // 30 seconds
+    const YOUTUBE_VIDEO_ID = 'aqz-KE-bpDs'; 
+    
+    let localMetrics = {};
+    let youtubeMetrics = {};
+
+    // --- Part 1: Email Validation ---
+
+    const emailInput = document.getElementById('emailInput');
+    const testButton = document.getElementById('testButton');
+
+    function validateEmail(email) {
+        // Simple regex for basic email format check
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return re.test(String(email).toLowerCase());
+    }
+
+    emailInput.addEventListener('input', () => {
+        if (validateEmail(emailInput.value)) {
+            testButton.disabled = false;
+        } else {
+            testButton.disabled = true;
+        }
+    });
+
+    // --- Part 2: Local Video Logic (bigbunny1.mp4) ---
+
+    const localVideo = document.getElementById('localVideo');
+    let localStartTime = 0;
+    let localBufferingCount = 0;
+    let localBufferingStartTime = 0;
+    let localTotalBufferingMs = 0; 
+
+    function setupLocalVideoEvents() {
+        // Reset metrics for a new run
+        localMetrics = {
+            name: "Local Video",
+            initialLatency: "N/A",
+            totalStalls: 0,
+            duration: `${LOCAL_VIDEO_DURATION_MS / 1000}s`
+        };
+        localBufferingCount = 0;
+        localTotalBufferingMs = 0;
+
+        // Measure 'Latency'
+        localVideo.addEventListener('loadstart', () => {
+            localStartTime = performance.now();
+        });
+
+        localVideo.addEventListener('playing', function handlePlaying() {
+            if (localMetrics.initialLatency === "N/A") {
+                localMetrics.initialLatency = `${(performance.now() - localStartTime).toFixed(2)} ms`;
+            }
+            
+            // LOGIC: Stop the timer and accumulate time
+            if (localBufferingStartTime > 0) {
+                localTotalBufferingMs += performance.now() - localBufferingStartTime;
+                localBufferingStartTime = 0; // Reset the timer
+            }
+        });
+
+        // Measure 'Buffering'
+        localVideo.addEventListener('waiting', () => {
+            localBufferingCount++;
+            // LOGIC: Start the timer when buffering begins
+            if (localBufferingStartTime === 0) {
+                localBufferingStartTime = performance.now();
+            }
+        });
+
+        // Clear existing listeners to prevent multiple calls on re-run
+        localVideo.onended = null;
+    }
+
+    function runLocalVideoTest() {
+        setupLocalVideoEvents();
+        // Re-load to reset the media pipeline cleanly
+        localVideo.src = localVideo.getElementsByTagName('source')[0].src;
+        localVideo.load();
+        localVideo.play().catch(e => console.error("Local play failed:", e));
+
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                localVideo.pause();
+                localVideo.currentTime = 0; 
+                localMetrics.totalStalls = localBufferingCount; 
+                localMetrics.totalBufferingMs = localTotalBufferingMs;
+                resolve();
+            }, LOCAL_VIDEO_DURATION_MS);
+        });
+    }
+
+    // --- Part 3: YouTube Player Logic ---
+    let player;
+    let youtubeStartTime = 0;
+    let youtubeBufferingCount = 0;
+    let youtubeBufferingStartTime = 0;
+    let youtubeTotalBufferingMs = 0; 
+
+    // 3.1. Inject the YouTube IFrame API script
+    const tag = document.createElement('script');
+    tag.src = "https://www.youtube.com/iframe_api";
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+    // 3.2. This function is called by the API script once loaded
+    function onYouTubeIframeAPIReady() {
+        player = new YT.Player('youtubePlayer', {
+            height: '100%',
+            width: '100%',
+            videoId: YOUTUBE_VIDEO_ID,
+            playerVars: {
+                'playsinline': 1,
+                'autoplay': 0,
+                'controls': 1
+            }
+        });
+    }
+
+    function runYoutubeVideoTest() {
+        // Reset metrics for a new run
+        youtubeMetrics = {
+            name: "YouTube Video",
+            initialLatency: "N/A",
+            totalStalls: 0,
+            duration: `${YOUTUBE_VIDEO_DURATION_MS / 1000}s`
+        };
+        youtubeBufferingCount = 0;
+        youtubeTotalBufferingMs = 0;
+        youtubeBufferingStartTime = 0;
+        youtubeStartTime = performance.now();
+
+        return new Promise((resolve) => {
+            const interval = setInterval(() => {
+                if (player && player.getPlayerState() !== -1) { 
+                    clearInterval(interval);
+                    
+                    // Clear existing listeners before starting a new test
+                    player.removeEventListener('onStateChange');
+                    
+                    player.loadVideoById(YOUTUBE_VIDEO_ID); 
+                    player.mute(); 
+                    player.playVideo(); 
+
+                    // YouTube Player State events
+                    player.addEventListener('onStateChange', (event) => {
+                        // State 1: Playing
+                        if (event.data === YT.PlayerState.PLAYING) {
+                            if (youtubeMetrics.initialLatency === "N/A") {
+                                youtubeMetrics.initialLatency = `${(performance.now() - youtubeStartTime).toFixed(2)} ms`;
+                            }
+                            
+                            // LOGIC: Stop the buffering timer
+                            if (youtubeBufferingStartTime > 0) {
+                                youtubeTotalBufferingMs += performance.now() - youtubeBufferingStartTime;
+                                youtubeBufferingStartTime = 0; // Reset the timer
+                            }
+
+                        // State 3: Buffering
+                        } else if (event.data === YT.PlayerState.BUFFERING) {
+                            youtubeBufferingCount++;
+                            // LOGIC: Start the buffering timer
+                            if (youtubeBufferingStartTime === 0) {
+                                youtubeBufferingStartTime = performance.now();
+                            }
+                        }
+                    });
+
+                    // Stop the test after 30 seconds
+                    setTimeout(() => {
+                        player.stopVideo();
+                        youtubeMetrics.totalStalls = youtubeBufferingCount;
+                        youtubeMetrics.totalBufferingMs = youtubeTotalBufferingMs;
+                        resolve();
+                    }, YOUTUBE_VIDEO_DURATION_MS);
+                }
+            }, 500);
+        });
+    }
+
+    // --- Part 4: Main Test Runner and Summary ---
+
+    async function runVideoTests() {
+        document.getElementById('resultsContent').innerHTML = '<p style="color: #1a73e8; font-weight: 500;">Running tests... Please wait.</p>';
+        testButton.disabled = true; 
+        
+        await runLocalVideoTest();
+        // Pause briefly before the next test
+        await new Promise(r => setTimeout(r, 1000)); 
+        await runYoutubeVideoTest();
+
+        displaySummary();
+        testButton.disabled = false; 
+    }
+
+    function calculateRebufferRatio(totalBufferingMs, totalDurationMs) {
+        // The ratio is (Total Buffering Time / Total Playback Time)
+        const ratio = totalBufferingMs / totalDurationMs;
+        return `${(ratio * 100).toFixed(4)}%`;
+    }
+
+    function displaySummary() {
+        const resultsContent = document.getElementById('resultsContent');
+        
+        // 1. Calculate Local Video Ratio
+        const localRebufferRatio = calculateRebufferRatio(
+            localMetrics.totalBufferingMs, 
+            LOCAL_VIDEO_DURATION_MS
+        );
+        
+        // 2. Calculate YouTube Video Ratio
+        const youtubeRebufferRatio = calculateRebufferRatio(
+            youtubeMetrics.totalBufferingMs, 
+            YOUTUBE_VIDEO_DURATION_MS
+        );
+
+        const allMetrics = [
+            { 
+                ...localMetrics, 
+                rebufferRatio: localRebufferRatio,
+                // Convert milliseconds to seconds for clean display
+                totalBufferingTimeDisplay: `${(localMetrics.totalBufferingMs / 1000).toFixed(2)}s`
+            }, 
+            { 
+                ...youtubeMetrics, 
+                rebufferRatio: youtubeRebufferRatio,
+                totalBufferingTimeDisplay: `${(youtubeMetrics.totalBufferingMs / 1000).toFixed(2)}s`
+            }
+        ];
+        
+        let html = '<h2>Test Complete!</h2>';
+        
+        allMetrics.forEach(metrics => {
+            html += `
+                <h3>${metrics.name} Metrics</h3>
+                <ul class="metric-list">
+                    <li>**Test Duration:** ${metrics.duration}</li>
+                    <li>**Initial Latency:** ${metrics.initialLatency}</li>
+                    <li class="buffering-time" style="font-weight: bold;">
+                        🛑 **Total Buffering Time:** ${metrics.totalBufferingTimeDisplay}
+                    </li>
+                    <li class="rebuffer-ratio" style="font-weight: bold;">
+                        ⚠️ **Rebuffer Ratio:** ${metrics.rebufferRatio}
+                    </li>
+                    <li>**Number of Stalls (#):** ${metrics.totalStalls}</li>
+                </ul>
+            `;
+        });
+
+        resultsContent.innerHTML = html;
+    }
+</script>
+
+</body>
+</html>
