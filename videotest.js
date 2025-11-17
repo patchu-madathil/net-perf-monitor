@@ -9,7 +9,10 @@ const YOUTUBE_VIDEO_DURATION_MS = 30000;
 const YOUTUBE_VIDEO_IDS = [
     'QH2-TGUlwu4',  // Primary generic video
     'w_f2lJ4_7yQ',  // Fallback 1
-    'xcJtL7Qz8HM'   // Fallback 2
+    'xcJtL7Qz8HM',  // Fallback 2
+    '5i_B3P7tX-M', // YouTube Test Video (Channel: Test Video)
+    'aqz-KE-bpDs', // Big Buck Bunny (known public domain sample)
+    '2Vv-BfVoq4g'  // High-Quality Global Music Video Example
 ]; 
 
 // Global storage for metrics, player instance, and video index
