@@ -113,8 +113,8 @@ videoTest.runLocalVideoTest = function(videoElement) {
  * @returns {Promise<object>} Returns the collected metrics object.
  */
 videoTest.runYoutubeVideoTest = function(videoId) {
-    // Access the YouTube player instance via the global window object (set in onYouTubeIframeAPIReady)
-    let player = window.youtubePlayerInstance; // Assuming we rename the global variable for clarity.
+    // Access the YouTube player instance via the global window object
+    let player = window.youtubePlayerInstance; 
     
     // Fallback if the player instance hasn't been set yet
     if (!player) {

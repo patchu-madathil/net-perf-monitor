@@ -14,16 +14,15 @@ function validateEmail(email) {
 }
 
 function handleEmailInput() {
-    // Access elements via app. namespace
     app.testButton.disabled = !validateEmail(app.emailInput.value);
     app.errorDisplay.style.display = 'none';
 }
 
 function initialize() {
-    // ⚠️ FIX: Get DOM elements and attach them to the 'app' namespace ⚠️
+    // Get DOM elements and attach them to the 'app' namespace
     app.emailInput = document.getElementById('emailInput');
     app.testButton = document.getElementById('testButton');
-    app.localVideo = document.getElementById('localVideo'); // This caused the conflict!
+    app.localVideo = document.getElementById('localVideo');
     app.resultsContent = document.getElementById('resultsContent');
     app.errorDisplay = document.getElementById('errorDisplay');
     app.webrtcResultsContent = document.getElementById('webrtcResultsContent');
@@ -35,7 +34,7 @@ function initialize() {
     // Bind handlers
     app.emailInput.addEventListener('input', handleEmailInput);
     
-    // Initialize YouTube API and WebRTC environment
+    // Initialize YouTube API
     if (typeof videoTest !== 'undefined' && typeof videoTest.injectYoutubeAPI === 'function') {
         videoTest.injectYoutubeAPI(); 
     }
@@ -43,7 +42,7 @@ function initialize() {
 
 document.addEventListener('DOMContentLoaded', initialize);
 
-// --- Display Functions (Updated to use app. namespace for elements/metrics) ---
+// --- Display Functions ---
 
 function calculateRebufferRatio(totalBufferingMs, totalDurationMs) {
     const ratio = totalBufferingMs / totalDurationMs;
@@ -142,26 +141,23 @@ app.startAllTests = async function() {
     app.testButton.disabled = true; 
     
     try {
-        const videoId = await videoTest.getGuaranteedVideoId(); // Get the video ID
+        const videoId = await videoTest.getGuaranteedVideoId();
         
-        // 1. STEP 1: WEB RTC TEST
+        // 1. STEP 1: WEB RTC TEST (Sequential)
         app.webrtcSummaryHeader.innerHTML = "🎙️ VoIP WebRTC Test Metrics (⏳ RUNNING: 30s)";
         app.webrtcResultsContent.innerHTML = '<p style="color: #1a73e8; font-weight: 500;">Please grant microphone access if prompted. Running test...</p>';
-        console.log("Starting WebRTC VoIP Test...");
         
-        const webrtcResult = await webrtcTest.runTest(); // Call the function from webrtc_test.js
+        const webrtcResult = await webrtcTest.runTest(); 
         app.webrtcMetrics = webrtcResult.metrics;
         displayWebrtcSummary(); 
         
         await new Promise(r => setTimeout(r, 1000)); 
         
-        // 2. STEP 2: VIDEO TESTS
+        // 2. STEP 2: VIDEO TESTS (Sequential)
         
         // Local Test
         app.videoSummaryHeader.innerHTML = "📊 Video Test Summary (⏳ RUNNING: Local Video)";
         app.resultsContent.innerHTML = '<p style="color: #1a73e8; font-weight: 500;">Running Local Video Test (45s)...</p>';
-        console.log("Starting Local Video Test...");
-        // Pass localVideo element from app scope to the module
         const localResult = await videoTest.runLocalVideoTest(app.localVideo); 
         app.localMetrics = localResult.metrics;
         
@@ -170,8 +166,6 @@ app.startAllTests = async function() {
         // YouTube Test
         app.videoSummaryHeader.innerHTML = "📊 Video Test Summary (⏳ RUNNING: YouTube Video)";
         app.resultsContent.innerHTML = '<p style="color: #1a73e8; font-weight: 500;">Running YouTube Video Test (30s)...</p>';
-        console.log("Starting YouTube Video Test...");
-        // Pass the videoId to the module
         const youtubeResult = await videoTest.runYoutubeVideoTest(videoId); 
         app.youtubeMetrics = youtubeResult.metrics;
 
@@ -179,6 +173,7 @@ app.startAllTests = async function() {
         displayVideoSummary();
         
     } catch (e) {
+        // This catches orchestration errors, not test failures (which are handled internally)
         displayError(`An unexpected error occurred during test orchestration: ${e.message}`);
     } finally {
         app.testButton.disabled = false; 

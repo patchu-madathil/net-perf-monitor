@@ -28,6 +28,7 @@ h3 {
     background: #ffffff; 
     padding: 24px; 
     border-radius: 8px; 
+    /* Subtle Elevation 2 shadow */
     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.16), 0 3px 6px rgba(0, 0, 0, 0.23); 
 }
 
@@ -126,7 +127,7 @@ h3 {
     border-left: 4px solid #fbbc04; /* Google Yellow for Warning/Ratio */
 }
 
-/* ⚠️ New Error Styling ⚠️ */
+/* New Error Styling */
 .error-message {
     color: #a80000; /* Dark red for high visibility */
     background-color: #ffe0e0;
