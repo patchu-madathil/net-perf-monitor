@@ -10,14 +10,41 @@ const R_NOT = 94;
 const BPL_FACTOR = 2.5; 
 
 /**
+ * 🆕 Creates a silent audio track using the Web Audio API. 
+ * This replaces navigator.mediaDevices.getUserMedia to avoid mic access prompts.
+ * @returns {MediaStream} A stream containing a single, silent audio track.
+ */
+function createSimulatedAudioStream() {
+    try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const destination = audioContext.createMediaStreamDestination();
+        const oscillator = audioContext.createOscillator();
+        
+        // Mute the oscillator by setting its gain to zero
+        const gainNode = audioContext.createGain();
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(destination);
+        
+        // Start the oscillator to ensure the stream is "active"
+        oscillator.start();
+
+        return destination.stream;
+    } catch (e) {
+        console.error("Web Audio API not supported or failed to start:", e);
+        // Throw an error that will be caught by the main test function
+        throw new Error("Web Audio API required for simulated stream is unavailable.");
+    }
+}
+
+
+/**
  * Calculates a simplified Mean Opinion Score (MOS) using the E-Model (R-factor).
- * @param {number} latencyMs - Average one-way latency in milliseconds.
- * @param {number} jitterMs - Average jitter in milliseconds.
- * @param {number} packetLossPct - Total packet loss percentage (0-100).
- * @returns {number} The calculated MOS score (1.0 to 4.5/5.0).
+ * [Function Body remains the same]
  */
 function calculateMosScore(latencyMs, jitterMs, packetLossPct) {
-    if (packetLossPct === undefined || isNaN(packetLossPct)) packetLossPct = 0;
+    if (packetLossPct === undefined || isNaN(packetLossLossPct)) packetLossPct = 0;
     
     // Id: Impairment due to delay (simplified formula)
     let delayMs = latencyMs + jitterMs; 
@@ -54,6 +81,7 @@ function calculateMosScore(latencyMs, jitterMs, packetLossPct) {
 
 /**
  * Extracts and aggregates statistics from RTCPeerConnection.getStats().
+ * [Function Body remains the same]
  */
 async function collectWebRTCStats(pc) {
     const stats = await pc.getStats();
@@ -82,8 +110,7 @@ async function collectWebRTCStats(pc) {
 }
 
 /**
- * Main WebRTC Test Function: Runs the VoIP simulation.
- * Exposed in the global webrtcTest namespace.
+ * Main WebRTC Test Function: Runs the VoIP simulation without mic access.
  */
 webrtcTest.runTest = function() {
     return new Promise(async (resolve) => {
@@ -101,11 +128,15 @@ webrtcTest.runTest = function() {
         let failureReason = null;
 
         try {
-            stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+            // 1. Get Simulated Media Stream (No mic access needed!)
+            stream = createSimulatedAudioStream(); // ⬅️ KEY CHANGE
             
+            // 2. Create Peer Connections
             pc1 = new RTCPeerConnection(configuration);
             pc2 = new RTCPeerConnection(configuration);
 
+            // 3. Signaling: Self-contained loopback (A <-> B)
+            
             pc1.onicecandidate = e => pc2.addIceCandidate(e.candidate).catch(() => {});
             pc2.onicecandidate = e => pc1.addIceCandidate(e.candidate).catch(() => {});
             
@@ -113,10 +144,12 @@ webrtcTest.runTest = function() {
                 console.log("WebRTC: Remote track received. Connection established.");
             };
 
+            // 4. Add VoIP Stream (Simulates sending packets)
             stream.getTracks().forEach(track => {
                 pc1.addTrack(track, stream);
             });
 
+            // 5. SDP Exchange 
             const offer = await pc1.createOffer();
             await pc1.setLocalDescription(offer);
             await pc2.setRemoteDescription(pc1.localDescription);
@@ -127,24 +160,30 @@ webrtcTest.runTest = function() {
 
             console.log("WebRTC: SDP exchange complete. Testing started.");
 
+            // 6. Start Stat Collection Loop
             statsInterval = setInterval(async () => {
                 const stats = await collectWebRTCStats(pc1);
                 
+                // Aggregate RTT and Jitter
                 if (stats.rtt.length > 0) allLatency.push(...stats.rtt);
                 if (stats.jitter.length > 0) allJitter.push(...stats.jitter);
 
+                // Update final packet counts only if metrics exist
                 if (stats.packetsSent > 0) {
                     totalPacketsSent = stats.packetsSent;
                     totalPacketsLost = stats.packetsLost;
                 }
-            }, 2000);
+            }, 2000); 
 
+            // 7. Run Test Timer
             setTimeout(() => {
+                // End test
                 clearInterval(statsInterval);
                 
-                if (allLatency.length === 0 || totalPacketsSent === 0) {
-                    failureReason = "No media traffic (packets or stats) received. Check STUN server/network.";
+                if (allLatency.length === 0 || totalPacketsSent === 0 || totalPacketsSent < 100) {
+                    failureReason = "No reliable media traffic (packets or stats) exchanged. Check STUN/network firewall.";
                 } else {
+                    // Final calculation
                     const avgLatency = allLatency.reduce((a, b) => a + b, 0) / allLatency.length;
                     const avgJitter = allJitter.reduce((a, b) => a + b, 0) / allJitter.length;
                     const packetLossPct = totalPacketsSent > 0 ? (totalPacketsLost / totalPacketsSent) * 100 : 0;
@@ -161,6 +200,7 @@ webrtcTest.runTest = function() {
                     };
                 }
 
+                // 8. Cleanup and Resolve
                 stream.getTracks().forEach(track => track.stop());
                 pc1.close();
                 pc2.close();
@@ -179,7 +219,7 @@ webrtcTest.runTest = function() {
             if (pc2) pc2.close();
             if (stream) stream.getTracks().forEach(track => track.stop());
 
-            failureReason = `Setup failed (Permission/API): ${e.name || e.message}. Ensure camera/mic access is allowed.`;
+            failureReason = `Setup failed: ${e.message || e.name}. Ensure Web Audio API is supported.`;
             resolve({ metrics: { name: "WebRTC VoIP Test", error: true, errorMessage: failureReason } });
         }
     });
